@@ -1345,3 +1345,50 @@ class ChatMethods:
             await self._return_exported_sender(sender)
 
     # endregion
+
+    async def get_view_by_source_stats(
+            self: 'TelegramClient',
+            entity: 'hints.EntityLike',
+    ):
+        entity = await self.get_input_entity(entity)
+        if helpers._entity_type(entity) != helpers._EntityType.CHANNEL:
+            raise TypeError('You must pass a channel entity')
+
+        # Don't bother fetching the Channel entity (costs a request), instead
+        # try to guess and if it fails we know it's the other one (best case
+        # no extra request, worst just one).
+        try:
+            req = functions.stats.GetBroadcastStatsRequest(entity)
+            # print('------------- HERE 1-----------------')
+            # print(req)
+            return await self(req)
+        except errors.StatsMigrateError as e:
+            dc = e.dc
+        except errors.BroadcastRequiredError:
+            req = functions.stats.GetMegagroupStatsRequest(entity)
+            print('------------- HERE 2-----------------')
+            try:
+                return await self(req)
+            except errors.StatsMigrateError as e:
+                dc = e.dc
+
+        # print(dc)
+        sender = await self._borrow_exported_sender(dc)
+        # print('--asd----------')
+        # print(sender)
+        try:
+            # req will be resolved to use the right types inside by now
+            # print('------------- HERE 3-----------------')
+            data = await sender.send(req)
+            # print(data.views_by_source_graph.token)
+            # print('------------- HERE 3 3-----------------')
+            req = functions.stats.LoadAsyncGraphRequest(data.views_by_source_graph.token)
+            # print(req)
+            # print('------------- HERE 3 4-----------------')
+            data = await sender.send(req)
+            # print(data)
+            # print(data)
+            return data
+        finally:
+            print('------------- HERE 4-----------------')
+            await self._return_exported_sender(sender)
